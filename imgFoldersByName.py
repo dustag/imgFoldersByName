@@ -15,7 +15,7 @@ destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/Tri/"
 new_date = datetime(2024, 7, 4)
 for (dirpath, dirnames, filenames) in walk(sourcepath):
     if len(filenames) == 0 and len(dirnames) == 0:
-        print("Remove empty directory {dirpath}")
+        print(f"Remove empty directory {dirpath}")
         shutil.rmtree(dirpath)
         continue
     for img in filenames:
@@ -37,10 +37,10 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                         ]
                         m2 = re.search(r"(\d{4}):(\d{2}):(\d{2})", exif_date)
                         imgdest = m2.group(1) + m2.group(2) + m2.group(3) + "_" + img
-                        m = re.search(r"(.*?)(\d{4}):(\d{2}):(\d{2})(.*)", imgdest)
+                        m = re.search(r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", imgdest)
                     except:
                         path = dirpath + "/" + img
-                        print("{path} is not an image")
+                        print(f"{path} is not an image")
                         # Not an image
                         continue
 
@@ -81,9 +81,8 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                     piexif.insert(exif_bytes, dirpath + "/" + img)
             except Exception as e:
                 path = dirpath + "/" + img
-                print("{path} is not an image: {e}")
+                print(f"{path} is not an image: {e}")
                 # Not an image
-                continue
             finally:
                 try:
                     os.rename(dirpath + "/" + img, imgdir + imgdest)
