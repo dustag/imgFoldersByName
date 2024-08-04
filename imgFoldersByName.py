@@ -4,6 +4,7 @@ import os.path
 from os import path
 import re
 from datetime import datetime
+import shutil
 import time
 import piexif
 
@@ -13,6 +14,10 @@ destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/Tri/"
 
 new_date = datetime(2024, 7, 4)
 for (dirpath, dirnames, filenames) in walk(sourcepath):
+    if len(filenames) == 0 and len(dirnames) == 0:
+        print("Remove empty directory {dirpath}")
+        shutil.rmtree(dirpath)
+        continue
     for img in filenames:
         imgdir = ""
         imgdest = img
@@ -31,25 +36,25 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                             2:12
                         ]
                         m2 = re.search(r"(\d{4}):(\d{2}):(\d{2})", exif_date)
-                        imgdest = m2.group(1) + m2.group(2) + m2.group(3) + img
+                        imgdest = m2.group(1) + m2.group(2) + m2.group(3) + "_" + img
                         m = re.search(r"(.*?)(\d{4}):(\d{2}):(\d{2})(.*)", imgdest)
                     except:
-                        print("Not an image")
+                        path = dirpath + "/" + img
+                        print("{path} is not an image")
                         # Not an image
                         continue
 
         if m is not None:
-            if not path.exists(destpath + m.group(2) + "/"):
-                os.makedirs(destpath + m.group(2) + "/")
-            if not path.exists(destpath + m.group(2) + "/" + m.group(3) + "/"):
-                os.makedirs(destpath + m.group(2) + "/" + m.group(3) + "/")
-            imgdir = destpath + m.group(2) + "/" + m.group(3) + "/"
-            new_date = datetime(
-                int(m.group(2)), int(m.group(3)), int(m.group(4)), 0, 0, 0
-            )
-
             print(img)
             try:
+                if not path.exists(destpath + m.group(2) + "/"):
+                    os.makedirs(destpath + m.group(2) + "/")
+                if not path.exists(destpath + m.group(2) + "/" + m.group(3) + "/"):
+                    os.makedirs(destpath + m.group(2) + "/" + m.group(3) + "/")
+                imgdir = destpath + m.group(2) + "/" + m.group(3) + "/"
+                new_date = datetime(
+                    int(m.group(2)), int(m.group(3)), int(m.group(4)), 0, 0, 0
+                )
                 exif_dict = piexif.load(dirpath + "/" + img)
                 # print(exif_dict)
                 old_date = str(exif_dict["0th"][piexif.ImageIFD.DateTime])
@@ -75,7 +80,8 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                     exif_bytes = piexif.dump(exif_dict)
                     piexif.insert(exif_bytes, dirpath + "/" + img)
             except Exception as e:
-                print("Not an image: {e}")
+                path = dirpath + "/" + img
+                print("{path} is not an image: {e}")
                 # Not an image
                 continue
             finally:
