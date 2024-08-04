@@ -9,8 +9,9 @@ import time
 import piexif
 
 # sourcepath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/DCIM/Camera/"
-sourcepath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/A classer/"
+sourcepath = r"C:/Users/Antoine/OneDrive/Images/Photos à classer/"
 destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/Tri/"
+recursive = False
 
 new_date = datetime(2024, 7, 4)
 for (dirpath, dirnames, filenames) in walk(sourcepath):
@@ -35,8 +36,8 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                         imgdest = m2.group(1) + m2.group(2) + m2.group(3) + "_" + img
                         m = re.search(r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", imgdest)
                     except:
-                        path = dirpath + "/" + img
-                        print(f"{path} is not an image")
+                        p = dirpath + "/" + img
+                        print(f"{p} is not an image")
                         # Not an image
                         continue
 
@@ -76,8 +77,8 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                     exif_bytes = piexif.dump(exif_dict)
                     piexif.insert(exif_bytes, dirpath + "/" + img)
             except Exception as e:
-                path = dirpath + "/" + img
-                print(f"{path} is not an image: {e}")
+                p = dirpath + "/" + img
+                print(f"{p} is not an image: {e}")
                 # Not an image
             finally:
                 try:
@@ -88,8 +89,10 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                         imgdir
                         + imgdest
                         + "-duplicate-"
-                        + time.time().strftime("%m/%d/%Y, %H:%M:%S"),
+                        + datetime.now().strftime("%m-%d-%Y %H-%M-%S"),
                     )
+    if not recursive:
+        break
     # If source directory is now empty, remove it
     if len(os.listdir(dirpath)) == 0:
         shutil.rmtree(dirpath)
