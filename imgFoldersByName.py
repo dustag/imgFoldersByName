@@ -14,10 +14,6 @@ destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/Tri/"
 
 new_date = datetime(2024, 7, 4)
 for (dirpath, dirnames, filenames) in walk(sourcepath):
-    if len(filenames) == 0 and len(dirnames) == 0:
-        print(f"Remove empty directory {dirpath}")
-        shutil.rmtree(dirpath)
-        continue
     for img in filenames:
         imgdir = ""
         imgdest = img
@@ -94,3 +90,6 @@ for (dirpath, dirnames, filenames) in walk(sourcepath):
                         + "-duplicate-"
                         + time.time().strftime("%m/%d/%Y, %H:%M:%S"),
                     )
+    # If source directory is now empty, remove it
+    if len(os.listdir(dirpath)) == 0:
+        shutil.rmtree(dirpath)
