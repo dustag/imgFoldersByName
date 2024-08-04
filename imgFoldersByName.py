@@ -7,53 +7,85 @@ from datetime import datetime
 import time
 import piexif
 
-sourcepath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/DCIM/Camera/"
-destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/A classer/"
+# sourcepath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/DCIM/Camera/"
+sourcepath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/A classer/"
+destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/Tri/"
 
-f=[]
+new_date = datetime(2024, 7, 4)
 for (dirpath, dirnames, filenames) in walk(sourcepath):
-    f.extend(filenames)
-    break
+    for img in filenames:
+        imgdir = ""
+        imgdest = img
+        m = re.search(r"(.*?)(\d{4})-(\d{2})-(\d{2})(.*)", img)  # Samsung S7
+        if m is None:
+            m = re.search(
+                r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", img
+            )  # Samsung S10, S24 and Canon Powershot
+            if m is None:
+                m = re.search(r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", img)  # Whatsapp
+                if m is None:
+                    try:
+                        exif_dict = piexif.load(dirpath + "/" + img)
+                        # print(exif_dict)
+                        exif_date = str(exif_dict["0th"][piexif.ImageIFD.DateTime])[
+                            2:12
+                        ]
+                        m2 = re.search(r"(\d{4}):(\d{2}):(\d{2})", exif_date)
+                        imgdest = m2.group(1) + m2.group(2) + m2.group(3) + img
+                        m = re.search(r"(.*?)(\d{4}):(\d{2}):(\d{2})(.*)", imgdest)
+                    except:
+                        print("Not an image")
+                        # Not an image
+                        continue
 
-new_date = datetime(2021, 2, 26)
-for img in f:
-    imgdir = ""
-    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", img)              # Samsung S7
-    if m is not None:
-        imgdir = destpath + m.group(1) + "-" + m.group(2) + "-" + m.group(3) + "/"
-        new_date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 0, 0, 0)
-    else:
-        m = re.search(r"(\d{4})(\d{2})(\d{2})", img)            # Samsung S10
         if m is not None:
-            imgdir = destpath + m.group(1) + "-" + m.group(2) + "-" + m.group(3) + "/"
-            new_date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 0, 0, 0)
-        else:
-            m = re.search(r"IMG-(\d{4})(\d{2})(\d{2})", img)    # Whatsapp
-            if m is not None:
-                imgdir = destpath + m.group(1) + "-" + m.group(2) + "-" + m.group(3) + "/"
-                new_date = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 0, 0, 0)
-    if imgdir != "":
-        if not path.exists(imgdir):
-            os.makedirs(imgdir)
-        print(img)
-        try:
-            exif_dict = piexif.load(sourcepath + img)
-            #print(exif_dict)
-            old_date = str(exif_dict['0th'][piexif.ImageIFD.DateTime])
-            #print(old_date)
-            if old_date[2:12] != new_date.strftime("%Y:%m:%d"):
-                exif_dict['0th'][piexif.ImageIFD.DateTime] = new_date.strftime("%Y:%m:%d %H:%M:%S")
-                exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal] = new_date.strftime("%Y:%m:%d %H:%M:%S")
-                exif_dict['Exif'][piexif.ExifIFD.DateTimeDigitized] = new_date.strftime("%Y:%m:%d %H:%M:%S")
-                exif_bytes = piexif.dump(exif_dict)
-                piexif.insert(exif_bytes, sourcepath + img)
-        except:
-            print("Not an image")
-            # Not an image
-        finally :
+            if not path.exists(destpath + m.group(2) + "/"):
+                os.makedirs(destpath + m.group(2) + "/")
+            if not path.exists(destpath + m.group(2) + "/" + m.group(3) + "/"):
+                os.makedirs(destpath + m.group(2) + "/" + m.group(3) + "/")
+            imgdir = destpath + m.group(2) + "/" + m.group(3) + "/"
+            new_date = datetime(
+                int(m.group(2)), int(m.group(3)), int(m.group(4)), 0, 0, 0
+            )
+
+            print(img)
             try:
-                os.rename(sourcepath + img, imgdir + img)
-            except FileExistsError:
-                os.rename(sourcepath + img, imgdir + img + "-duplicate-" + time.time().strftime("%m/%d/%Y, %H:%M:%S"))
+                exif_dict = piexif.load(dirpath + "/" + img)
+                # print(exif_dict)
+                old_date = str(exif_dict["0th"][piexif.ImageIFD.DateTime])
+                # print(old_date)
+                if old_date[2:12] != new_date.strftime("%Y:%m:%d"):
+                    imgdest = (
+                        m.group(1) + old_date[2:12].replace(":", "") + m.group(5)
+                    )
+                    print("--> " + imgdest)
 
-
+            except KeyError as ke:
+                if ke.args[0] == 306:
+                    # If exif date not present try to add it from filename date
+                    exif_dict["0th"][piexif.ImageIFD.DateTime] = new_date.strftime(
+                        "%Y:%m:%d %H:%M:%S"
+                    )
+                    exif_dict["Exif"][
+                        piexif.ExifIFD.DateTimeOriginal
+                    ] = new_date.strftime("%Y:%m:%d %H:%M:%S")
+                    exif_dict["Exif"][
+                        piexif.ExifIFD.DateTimeDigitized
+                    ] = new_date.strftime("%Y:%m:%d %H:%M:%S")
+                    exif_bytes = piexif.dump(exif_dict)
+                    piexif.insert(exif_bytes, dirpath + "/" + img)
+            except Exception as e:
+                print("Not an image: {e}")
+                # Not an image
+                continue
+            finally:
+                try:
+                    os.rename(dirpath + "/" + img, imgdir + imgdest)
+                except FileExistsError:
+                    os.rename(
+                        dirpath + img,
+                        imgdir
+                        + imgdest
+                        + "-duplicate-"
+                        + time.time().strftime("%m/%d/%Y, %H:%M:%S"),
+                    )
