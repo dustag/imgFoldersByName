@@ -1,98 +1,196 @@
 import os
-from os import walk
-import os.path
-from os import path
 import re
-from datetime import datetime
-import shutil
-import time
+import argparse
 import piexif
+import shutil
+import json
+from datetime import datetime
+from pathlib import Path
+from PIL import Image
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic
+from collections import defaultdict
+import subprocess
+import time
 
-# sourcepath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/DCIM/Camera/"
-sourcepath = r"C:/Users/Antoine/OneDrive/Images/Photos à classer/"
-destpath = r"C:/Users/Antoine/OneDrive/Images/Galerie Samsung/Tri/"
-recursive = False
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.heic')
+VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv')
+DATE_REGEXES = [
+    re.compile(r"(.*?)(\d{4})-(\d{2})-(\d{2})(.*)"),   # Samsung S7
+    re.compile(r"(.*?)(\d{4})(\d{2})(\d{2})(.*)"),     # Samsung S10, S24, Canon, WhatsApp
+]
 
-new_date = datetime(2024, 7, 4)
-for (dirpath, dirnames, filenames) in walk(sourcepath):
-    for img in filenames:
-        imgdir = ""
-        imgdest = img
-        m = re.search(r"(.*?)(\d{4})-(\d{2})-(\d{2})(.*)", img)  # Samsung S7
-        if m is None:
-            m = re.search(
-                r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", img
-            )  # Samsung S10, S24 and Canon Powershot
-            if m is None:
-                m = re.search(r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", img)  # Whatsapp
-                if m is None:
-                    try:
-                        exif_dict = piexif.load(dirpath + "/" + img)
-                        # print(exif_dict)
-                        exif_date = str(exif_dict["0th"][piexif.ImageIFD.DateTime])[
-                            2:12
-                        ]
-                        m2 = re.search(r"(\d{4}):(\d{2}):(\d{2})", exif_date)
-                        imgdest = m2.group(1) + m2.group(2) + m2.group(3) + "_" + img
-                        m = re.search(r"(.*?)(\d{4})(\d{2})(\d{2})(.*)", imgdest)
-                    except:
-                        p = dirpath + "/" + img
-                        print(f"{p} is not an image")
-                        # Not an image
-                        continue
+geolocator = Nominatim(user_agent="photo-organizer")
 
-        if m is not None:
-            print(img)
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("source", nargs="?", default="C:\\Users\\Antoine\\OneDrive\\Images\\Galerie Samsung\\ATrier")
+    parser.add_argument("dest", nargs="?", default="C:\\Users\\Antoine\\OneDrive\\Images\\Galerie Samsung\\Trie")
+    parser.add_argument("-m", "--move", action="store_true", help="Moving files instead of copying")
+    return parser.parse_args()
+
+def get_decimal_from_dms(dms, ref):
+    degrees = dms[0][0] / dms[0][1]
+    minutes = dms[1][0] / dms[1][1]
+    seconds = dms[2][0] / dms[2][1]
+    sign = -1 if ref in ['S', 'W'] else 1
+    return sign * (degrees + minutes / 60 + seconds / 3600)
+
+def extract_image_metadata(path):
+    try:
+        exif_dict = piexif.load(path)
+        gps = exif_dict.get("GPS", {})
+        date = exif_dict["Exif"].get(piexif.ExifIFD.DateTimeOriginal)
+        if date:
+            date = date.decode("utf-8")
+        coords = None
+        if piexif.GPSIFD.GPSLatitude in gps:
+            lat = get_decimal_from_dms(gps[piexif.GPSIFD.GPSLatitude], gps[piexif.GPSIFD.GPSLatitudeRef].decode())
+            lon = get_decimal_from_dms(gps[piexif.GPSIFD.GPSLongitude], gps[piexif.GPSIFD.GPSLongitudeRef].decode())
+            coords = (lat, lon)
+        return date, coords
+    except Exception:
+        return None, None
+
+def extract_video_metadata(path):
+    try:
+        result = subprocess.run([
+            'ffprobe', '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_format', '-show_streams',
+            str(path)
+        ], capture_output=True, text=True)
+        metadata = json.loads(result.stdout)
+        tags = metadata.get("format", {}).get("tags", {})
+        date_str = tags.get("creation_time")
+        if date_str:
             try:
-                if not path.exists(destpath + m.group(2) + "/"):
-                    os.makedirs(destpath + m.group(2) + "/")
-                if not path.exists(destpath + m.group(2) + "/" + m.group(3) + "/"):
-                    os.makedirs(destpath + m.group(2) + "/" + m.group(3) + "/")
-                imgdir = destpath + m.group(2) + "/" + m.group(3) + "/"
-                new_date = datetime(
-                    int(m.group(2)), int(m.group(3)), int(m.group(4)), 0, 0, 0
-                )
-                exif_dict = piexif.load(dirpath + "/" + img)
-                # print(exif_dict)
-                old_date = str(exif_dict["0th"][piexif.ImageIFD.DateTime])
-                # print(old_date)
-                if old_date[2:12] != new_date.strftime("%Y:%m:%d"):
-                    imgdest = (
-                        m.group(1) + old_date[2:12].replace(":", "") + m.group(5)
-                    )
-                    print("--> " + imgdest)
+                date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                date = date.strftime("%Y:%m:%d %H:%M:%S")
+            except Exception:
+                date = None
+        else:
+            date = None
+        return date, None
+    except Exception:
+        return None, None
 
-            except KeyError as ke:
-                if ke.args[0] == 306:
-                    # If exif date not present try to add it from filename date
-                    exif_dict["0th"][piexif.ImageIFD.DateTime] = new_date.strftime(
-                        "%Y:%m:%d %H:%M:%S"
-                    )
-                    exif_dict["Exif"][
-                        piexif.ExifIFD.DateTimeOriginal
-                    ] = new_date.strftime("%Y:%m:%d %H:%M:%S")
-                    exif_dict["Exif"][
-                        piexif.ExifIFD.DateTimeDigitized
-                    ] = new_date.strftime("%Y:%m:%d %H:%M:%S")
-                    exif_bytes = piexif.dump(exif_dict)
-                    piexif.insert(exif_bytes, dirpath + "/" + img)
-            except Exception as e:
-                p = dirpath + "/" + img
-                print(f"{p} is not an image: {e}")
-                # Not an image
-            finally:
-                try:
-                    os.rename(dirpath + "/" + img, imgdir + imgdest)
-                except FileExistsError:
-                    os.rename(
-                        dirpath + img,
-                        imgdir
-                        + imgdest
-                        + "-duplicate-"
-                        + datetime.now().strftime("%m-%d-%Y %H-%M-%S"),
-                    )
-    if not recursive:
-        break
-    # If source directory is now empty, remove it
-    if len(os.listdir(dirpath)) == 0:
-        shutil.rmtree(dirpath)
+def extract_date_from_filename(filename):
+    filename = Path(filename).stem  # supprime l’extension
+    for regex in DATE_REGEXES:
+        match = regex.match(filename)
+        if match:
+            y, m, d = match.group(2), match.group(3), match.group(4)
+            rest = match.group(5)
+            # Cherche une heure dans la suite du nom
+            hour_match = re.search(r"(\d{2})[.:_]?(\d{2})[.:_]?(\d{2})", rest)
+            if hour_match:
+                hh, mm, ss = hour_match.groups()
+                return f"{y}:{m}:{d} {hh}:{mm}:{ss}"
+            else:
+                return f"{y}:{m}:{d} 00:00:00"
+    return None
+
+def merge_date_and_time(date_str, fallback_time="00:00:00"):
+    if " " in date_str:
+        return date_str
+    return f"{date_str} {fallback_time}"
+
+def update_exif_date(path, new_date):
+    try:
+        exif_dict = piexif.load(path)
+        new_bytes = new_date.encode('utf-8')
+        exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = new_bytes
+        exif_bytes = piexif.dump(exif_dict)
+        piexif.insert(exif_bytes, path)
+    except Exception as e:
+        print(f"Erreur mise à jour EXIF: {path} → {e}")
+
+def get_place_name(coord):
+    try:
+        time.sleep(1)
+        location = geolocator.reverse(coord, exactly_one=True, language='fr')
+        if location:
+            return location.address.split(',')[0]
+    except:
+        pass
+    return "Lieu inconnu"
+
+def cluster_by_location(files, max_dist_km=25):
+    clusters = []
+    for file in files:
+        placed = False
+        for cluster in clusters:
+            if file['coords'] and cluster['center']:
+                dist = geodesic(file['coords'], cluster['center']).km
+                if dist <= max_dist_km:
+                    cluster['files'].append(file)
+                    placed = True
+                    break
+        if not placed:
+            clusters.append({'center': file['coords'], 'files': [file]})
+    return clusters
+
+def organize_files(source, dest, move=False):
+    files_data = []
+
+    for root, _, files in os.walk(source):
+        for name in files:
+            ext = name.lower().endswith
+            full_path = os.path.join(root, name)
+            if ext(IMAGE_EXTENSIONS):
+                date, coords = extract_image_metadata(full_path)
+            elif ext(VIDEO_EXTENSIONS):
+                date, coords = extract_video_metadata(full_path)
+            else:
+                continue
+
+            date_from_name = extract_date_from_filename(name)
+            if date:
+                date = merge_date_and_time(date)
+            if date_from_name:
+                date_from_name = merge_date_and_time(date_from_name)
+
+            if date and date_from_name:
+                if date.split(" ")[0] != date_from_name.split(" ")[0]:
+                    print(f"Correction date pour {name}")
+                    update_exif_date(full_path, date_from_name)
+                    date = date_from_name
+            elif not date:
+                date = date_from_name
+
+            if not date:
+                print(f"Date introuvable pour {name}")
+                continue
+
+            files_data.append({
+                'path': full_path,
+                'date': datetime.strptime(date, "%Y:%m:%d %H:%M:%S"),
+                'coords': coords
+            })
+
+    date_groups = defaultdict(list)
+    for f in files_data:
+        key = f['date'].strftime("%Y-%m-%d")
+        date_groups[key].append(f)
+
+    for date_str, files in date_groups.items():
+        year = files[0]['date'].strftime("%Y")
+        clusters = cluster_by_location(files)
+        for i, cluster in enumerate(clusters):
+            location = get_place_name(cluster['center']) if cluster['center'] else "Lieu inconnu"
+            clean_location = location.replace(" ", "_").replace("/", "_")
+            folder = Path(dest) / year / f"{date_str} - {clean_location}"
+            folder.mkdir(parents=True, exist_ok=True)
+
+            for f in cluster['files']:
+                target = folder / Path(f['path']).name
+                if move:
+                    shutil.move(f['path'], target)
+                else:
+                    shutil.copy2(f['path'], target)
+                print(f"{'Déplacé' if move else 'Copié'} : {f['path']} → {target}")
+
+if __name__ == "__main__":
+    args = parse_args()
+    organize_files(args.source, args.dest, move=args.move)
