@@ -109,7 +109,7 @@ def update_exif_date(path, new_date):
 def get_place_name(coord):
     try:
         time.sleep(1.1)
-        location = geolocator.reverse(coord, exactly_one=True, language='fr')
+        location = geolocator.reverse(coord, exactly_one=True, language='en')
         if location:
             address_parts = location.raw.get('address', {})
             place_name = " - ".join([
@@ -142,6 +142,8 @@ def save_file(full_path, target, move=False):
     """Saves a file to the target location, avoiding duplicates"""
     base, ext = os.path.splitext(target)
     counter = 1
+    
+    file_name = os.path.basename(full_path)  # Retrieves the file name only
 
     while os.path.exists(target):
         target = f"{base} - dup {counter}{ext}"
@@ -150,18 +152,27 @@ def save_file(full_path, target, move=False):
     try:
         if move:
             shutil.move(full_path, target)
-            print(f"Moved : {full_path} → {target}")
+            print(f"Moved : {file_name} → {target}")
         else:
             shutil.copy2(full_path, target)
-            print(f"Copy : {full_path} → {target}")
+            print(f"Copy : {file_name} → {target}")
     except Exception as e:
         print(f"Error when copying/moving {full_path} : {e}")
 
 
 def organize_files(source, dest, move=False):
+    if move:
+        print(f"Move requested from {source} to {dest}")
+    else:
+        print(f"Copy requested from {source} to {dest}")
+    
     files_data = []
-
+    last_root = None
     for root, _, files in os.walk(source):
+        if root != last_root:  # Displays only if the file has changed
+            print(f"📂 Walking in: {root}")
+            last_root = root
+            
         for name in files:
             ext = name.lower().endswith
             full_path = os.path.join(root, name)
