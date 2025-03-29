@@ -104,17 +104,24 @@ def update_exif_date(path, new_date):
         exif_bytes = piexif.dump(exif_dict)
         piexif.insert(exif_bytes, path)
     except Exception as e:
-        print(f"Erreur mise à jour EXIF: {path} → {e}")
+        print(f"EXIF update error: {path} → {e}")
 
 def get_place_name(coord):
     try:
-        time.sleep(1)
+        time.sleep(1.1)
         location = geolocator.reverse(coord, exactly_one=True, language='fr')
         if location:
-            return location.address.split(',')[0]
+            address_parts = location.raw.get('address', {})
+            place_name = " - ".join([
+                address_parts.get('tourism') or address_parts.get('isolated_dwelling') or address_parts.get('locality') or address_parts.get('hamlet') or address_parts.get('road', ''),
+                address_parts.get('village') or address_parts.get('town') or address_parts.get('city', ''),
+                address_parts.get('state', ''),
+                address_parts.get('country', '')
+            ])
+            return place_name
     except:
         pass
-    return "Lieu inconnu"
+    return ""
 
 def cluster_by_location(files, max_dist_km=25):
     clusters = []
@@ -130,6 +137,26 @@ def cluster_by_location(files, max_dist_km=25):
         if not placed:
             clusters.append({'center': file['coords'], 'files': [file]})
     return clusters
+
+def save_file(full_path, target, move=False):
+    """Saves a file to the target location, avoiding duplicates"""
+    base, ext = os.path.splitext(target)
+    counter = 1
+
+    while os.path.exists(target):
+        target = f"{base} - dup {counter}{ext}"
+        counter += 1
+
+    try:
+        if move:
+            shutil.move(full_path, target)
+            print(f"Moved : {full_path} → {target}")
+        else:
+            shutil.copy2(full_path, target)
+            print(f"Copy : {full_path} → {target}")
+    except Exception as e:
+        print(f"Error when copying/moving {full_path} : {e}")
+
 
 def organize_files(source, dest, move=False):
     files_data = []
@@ -153,14 +180,14 @@ def organize_files(source, dest, move=False):
 
             if date and date_from_name:
                 if date.split(" ")[0] != date_from_name.split(" ")[0]:
-                    print(f"Correction date pour {name}")
+                    print(f"Date correction for {name}")
                     update_exif_date(full_path, date_from_name)
                     date = date_from_name
             elif not date:
                 date = date_from_name
 
             if not date:
-                print(f"Date introuvable pour {name}")
+                print(f"Date not found for {name}")
                 continue
 
             files_data.append({
@@ -178,18 +205,16 @@ def organize_files(source, dest, move=False):
         year = files[0]['date'].strftime("%Y")
         clusters = cluster_by_location(files)
         for i, cluster in enumerate(clusters):
-            location = get_place_name(cluster['center']) if cluster['center'] else "Lieu inconnu"
-            clean_location = location.replace(" ", "_").replace("/", "_")
-            folder = Path(dest) / year / f"{date_str} - {clean_location}"
+            location = get_place_name(cluster['center']) if cluster['center'] else ""
+            clean_location = ""
+            if len(location)>0:
+                clean_location = f" - {location.replace("/", "_")}"
+            folder = Path(dest) / year / f"{date_str}{clean_location}"
             folder.mkdir(parents=True, exist_ok=True)
 
             for f in cluster['files']:
                 target = folder / Path(f['path']).name
-                if move:
-                    shutil.move(f['path'], target)
-                else:
-                    shutil.copy2(f['path'], target)
-                print(f"{'Déplacé' if move else 'Copié'} : {f['path']} → {target}")
+                save_file(f['path'], target, move=move)
 
 if __name__ == "__main__":
     args = parse_args()
